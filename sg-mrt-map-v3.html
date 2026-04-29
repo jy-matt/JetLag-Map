@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Singapore MRT/LRT Coverage</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; overflow: hidden; font-family: 'DM Sans', system-ui, sans-serif; }
+    #map { width: 100%; height: 100vh; }
+
+    /* ── Panels ──────────────────────────────────────────────────── */
+    .panel {
+      position: absolute; z-index: 1000;
+      background: rgba(10,10,18,0.88);
+      backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 14px; color: #d8d8e8;
+      transition: background 0.25s, border-color 0.25s, color 0.25s;
+    }
+    body.light .panel {
+      background: rgba(252,252,255,0.93);
+      border-color: rgba(0,0,0,0.08);
+    }
+
+    #header { top: 16px; left: 16px; padding: 13px 17px; }
+    #header h1 { font-size: 15px; font-weight: 700; color: #fff; letter-spacing: -0.01em; transition: color 0.25s; }
+    #header p  { font-size: 11px; color: #44445a; margin-top: 2px; transition: color 0.25s; }
+    body.light #header h1 { color: #1a1a2e; }
+    body.light #header p  { color: #9090a8; }
+
+    #controls { top: 16px; right: 16px; padding: 15px 17px; width: 238px; }
+
+    .section-label {
+      font-size: 10px; font-weight: 700; letter-spacing: 0.1em;
+      text-transform: uppercase; color: #44445a; margin-bottom: 9px;
+      transition: color 0.25s;
+    }
+    body.light .section-label { color: #9090a8; }
+
+    .toggle-row {
+      display: flex; align-items: center;
+      justify-content: space-between; margin-bottom: 7px;
+    }
+    .toggle-row span { font-size: 13px; color: #b8b8cc; transition: color 0.25s; }
+    body.light .toggle-row span { color: #2a2a3e; }
+
+    .sw {
+      width: 38px; height: 22px; border-radius: 11px; flex-shrink: 0;
+      background: #252535; cursor: pointer; position: relative;
+      transition: background 0.22s; border: 1px solid rgba(255,255,255,0.05);
+    }
+    body.light .sw { background: #d8d8e8; border-color: rgba(0,0,0,0.08); }
+    .sw.on { background: #16a34a !important; border-color: transparent !important; }
+    .sw::after {
+      content: ''; position: absolute;
+      width: 16px; height: 16px; border-radius: 50%;
+      background: #fff; top: 2px; left: 2px;
+      transition: left 0.22s; box-shadow: 0 1px 3px rgba(0,0,0,0.35);
+    }
+    .sw.on::after { left: 18px; }
+
+    hr.div { border: none; border-top: 1px solid rgba(255,255,255,0.06); margin: 11px 0; transition: border-color 0.25s; }
+    body.light hr.div { border-top-color: rgba(0,0,0,0.07); }
+
+    .leg { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; font-size: 12px; color: #a0a0b8; transition: color 0.25s; }
+    body.light .leg { color: #3a3a50; }
+    .pip { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+
+    #count { font-size: 11px; color: #33334a; text-align: right; margin-top: 9px; transition: color 0.25s; }
+    body.light #count { color: #b0b0c0; }
+
+    /* ── Popups ──────────────────────────────────────────────────── */
+    .leaflet-popup-content-wrapper {
+      background: rgba(10,10,18,0.94) !important;
+      border: 1px solid rgba(255,255,255,0.09) !important;
+      border-radius: 10px !important;
+      box-shadow: 0 8px 28px rgba(0,0,0,0.45) !important;
+      color: #d8d8e8 !important;
+    }
+    body.light .leaflet-popup-content-wrapper {
+      background: rgba(255,255,255,0.97) !important;
+      border: 1px solid rgba(0,0,0,0.1) !important;
+      color: #1a1a2e !important;
+    }
+    .leaflet-popup-tip-container { display: none; }
+    .leaflet-popup-close-button { color: #555566 !important; top: 6px !important; right: 8px !important; }
+    body.light .leaflet-popup-close-button { color: #aaa !important; }
+    .pname { font-size: 14px; font-weight: 700; color: #fff; margin-bottom: 6px; }
+    body.light .pname { color: #1a1a2e; }
+    .pbadges { display: flex; flex-wrap: wrap; gap: 4px; }
+    .pb { font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 4px; color: #fff; }
+
+    /* ── Station name labels ─────────────────────────────────────── */
+    .stn-lbl {
+      font-size: 11px; font-weight: 600;
+      color: #ffffff; white-space: nowrap;
+      pointer-events: none; background: transparent; border: none;
+      text-shadow: 0 0 3px rgba(0,0,0,1), 0 0 8px rgba(0,0,0,0.9);
+      padding-left: 10px; margin-top: -5px;
+    }
+    body.light .stn-lbl {
+      color: #1a1a2e;
+      text-shadow: 0 0 3px rgba(255,255,255,1), 0 0 8px rgba(255,255,255,0.9);
+    }
+  </style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<div class="panel" id="header">
+  <h1>SG Transit Coverage</h1>
+  <p>MRT · LRT · 500 m radius</p>
+</div>
+
+<div class="panel" id="controls">
+  <div class="section-label">Display</div>
+  <div class="toggle-row">
+    <span>Station markers</span>
+    <div class="sw on" onclick="tog('markers',this)"></div>
+  </div>
+  <div class="toggle-row">
+    <span>Train lines</span>
+    <div class="sw on" onclick="tog('lines',this)"></div>
+  </div>
+  <div class="toggle-row">
+    <span>Station names</span>
+    <div class="sw" onclick="tog('labels',this)"></div>
+  </div>
+  <div class="toggle-row">
+    <span>500 m radius</span>
+    <div class="sw on" onclick="tog('circles',this)"></div>
+  </div>
+
+  <hr class="div">
+  <div class="section-label">Theme</div>
+  <div class="toggle-row">
+    <span>Light mode</span>
+    <div class="sw" onclick="toggleTheme(this)"></div>
+  </div>
+
+  <hr class="div">
+  <div class="section-label">Lines</div>
+  <div class="leg"><div class="pip" style="background:#e2231a"></div>North–South (NS)</div>
+  <div class="leg"><div class="pip" style="background:#009645"></div>East–West (EW)</div>
+  <div class="leg"><div class="pip" style="background:#9900aa"></div>North East (NE)</div>
+  <div class="leg"><div class="pip" style="background:#fa9e0d"></div>Circle (CC)</div>
+  <div class="leg"><div class="pip" style="background:#005ec4"></div>Downtown (DT)</div>
+  <div class="leg"><div class="pip" style="background:#9d5b25"></div>Thomson–East Coast (TE)</div>
+  <div class="leg"><div class="pip" style="background:#748477"></div>LRT (BP / SK / PG)</div>
+  <div id="count"></div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+
+const LC = {
+  NS:'#e2231a', EW:'#009645', NE:'#9900aa',
+  CC:'#fa9e0d', DT:'#005ec4', TE:'#9d5b25',
+  BP:'#748477', SL:'#748477', PL:'#748477'
+};
+
+const S = [
+  {n:"Jurong East", l:["NS","EW"], a:1.333144, o:103.74234},
+  {n:"Bukit Batok", l:["NS"], a:1.349058, o:103.749625},
+  {n:"Bukit Gombak", l:["NS"], a:1.35878, o:103.751998},
+  {n:"Choa Chu Kang", l:["NS","BP"], a:1.384706, o:103.744537},
+  {n:"Yew Tee", l:["NS"], a:1.397566, o:103.747452},
+  {n:"Kranji", l:["NS"], a:1.425227, o:103.762028},
+  {n:"Marsiling", l:["NS"], a:1.43251, o:103.77407},
+  {n:"Woodlands", l:["NS","TE"], a:1.436916, o:103.786481},
+  {n:"Admiralty", l:["NS"], a:1.44059, o:103.80099},
+  {n:"Sembawang", l:["NS"], a:1.44909, o:103.820049},
+  {n:"Canberra", l:["NS"], a:1.443039, o:103.829663},
+  {n:"Yishun", l:["NS"], a:1.429443, o:103.835005},
+  {n:"Khatib", l:["NS"], a:1.417348, o:103.832973},
+  {n:"Yio Chu Kang", l:["NS"], a:1.381693, o:103.845052},
+  {n:"Ang Mo Kio", l:["NS"], a:1.369266, o:103.850179},
+  {n:"Bishan", l:["NS","CC"], a:1.350845, o:103.848174},
+  {n:"Braddell", l:["NS"], a:1.340679, o:103.847216},
+  {n:"Toa Payoh", l:["NS"], a:1.33233, o:103.847425},
+  {n:"Novena", l:["NS"], a:1.32044, o:103.84383},
+  {n:"Newton", l:["NS","DT"], a:1.31232, o:103.83799},
+  {n:"Orchard", l:["NS","TE"], a:1.30367, o:103.83179},
+  {n:"Somerset", l:["NS"], a:1.300516, o:103.8385},
+  {n:"Dhoby Ghaut", l:["NS","NE","CC"], a:1.298947, o:103.845492},
+  {n:"City Hall", l:["NS","EW"], a:1.293116, o:103.852013},
+  {n:"Raffles Place", l:["NS","EW"], a:1.283017, o:103.851337},
+  {n:"Marina Bay", l:["NS","CC","TE"], a:1.27606, o:103.855041},
+  {n:"Marina South Pier", l:["NS"], a:1.271387, o:103.863606},
+  {n:"Pasir Ris", l:["EW"], a:1.373213, o:103.949277},
+  {n:"Tampines", l:["EW","DT"], a:1.353317, o:103.945221},
+  {n:"Simei", l:["EW"], a:1.343168, o:103.953358},
+  {n:"Tanah Merah", l:["EW"], a:1.327244, o:103.94649},
+  {n:"Bedok", l:["EW"], a:1.323932, o:103.929645},
+  {n:"Kembangan", l:["EW"], a:1.321, o:103.912904},
+  {n:"Eunos", l:["EW"], a:1.319734, o:103.902888},
+  {n:"Paya Lebar", l:["EW","CC"], a:1.318161, o:103.893144},
+  {n:"Aljunied", l:["EW"], a:1.31643, o:103.88291},
+  {n:"Kallang", l:["EW"], a:1.311486, o:103.871351},
+  {n:"Lavender", l:["EW"], a:1.307264, o:103.86292},
+  {n:"Bugis", l:["EW","DT"], a:1.30017, o:103.856125},
+  {n:"Tanjong Pagar", l:["EW"], a:1.27652, o:103.84586},
+  {n:"Outram Park", l:["EW","NE","TE"], a:1.281443, o:103.839137},
+  {n:"Tiong Bahru", l:["EW"], a:1.285734, o:103.826941},
+  {n:"Redhill", l:["EW"], a:1.289358, o:103.816991},
+  {n:"Queenstown", l:["EW"], a:1.294207, o:103.806075},
+  {n:"Commonwealth", l:["EW"], a:1.302396, o:103.798316},
+  {n:"Buona Vista", l:["EW","CC"], a:1.307212, o:103.790599},
+  {n:"Dover", l:["EW"], a:1.311385, o:103.778607},
+  {n:"Clementi", l:["EW"], a:1.315161, o:103.765206},
+  {n:"Chinese Garden", l:["EW"], a:1.342425, o:103.732592},
+  {n:"Lakeside", l:["EW"], a:1.344308, o:103.720864},
+  {n:"Boon Lay", l:["EW"], a:1.338428, o:103.705929},
+  {n:"Pioneer", l:["EW"], a:1.337641, o:103.696899},
+  {n:"Joo Koon", l:["EW"], a:1.327735, o:103.678321},
+  {n:"Gul Circle", l:["EW"], a:1.31885, o:103.660368},
+  {n:"Tuas Crescent", l:["EW"], a:1.321011, o:103.648997},
+  {n:"Tuas West Road", l:["EW"], a:1.330048, o:103.639617},
+  {n:"Tuas Link", l:["EW"], a:1.34025, o:103.636719},
+  {n:"Expo", l:["EW","DT"], a:1.334437, o:103.9616},
+  {n:"Changi Airport", l:["EW"], a:1.356983, o:103.988227},
+  {n:"HarbourFront", l:["NE","CC"], a:1.265473, o:103.821443},
+  {n:"Chinatown", l:["NE","DT"], a:1.284787, o:103.843931},
+  {n:"Clarke Quay", l:["NE"], a:1.288477, o:103.846756},
+  {n:"Little India", l:["NE","DT"], a:1.30629, o:103.849392},
+  {n:"Farrer Park", l:["NE"], a:1.31267, o:103.854708},
+  {n:"Boon Keng", l:["NE"], a:1.320037, o:103.861623},
+  {n:"Potong Pasir", l:["NE"], a:1.331232, o:103.868772},
+  {n:"Woodleigh", l:["NE"], a:1.338766, o:103.870496},
+  {n:"Serangoon", l:["NE","CC"], a:1.349962, o:103.873413},
+  {n:"Kovan", l:["NE"], a:1.359746, o:103.884278},
+  {n:"Hougang", l:["NE"], a:1.371609, o:103.892968},
+  {n:"Buangkok", l:["NE"], a:1.382983, o:103.893356},
+  {n:"Sengkang", l:["NE","SL"], a:1.39161, o:103.895466},
+  {n:"Punggol", l:["NE","PL"], a:1.40517, o:103.902356},
+  {n:"Punggol Coast", l:["NE"], a:1.4151, o:103.9103},
+  {n:"Bras Basah", l:["CC"], a:1.297654, o:103.850506},
+  {n:"Esplanade", l:["CC"], a:1.294043, o:103.855409},
+  {n:"Promenade", l:["CC","DT"], a:1.294069, o:103.860271},
+  {n:"Nicoll Highway", l:["CC"], a:1.300206, o:103.863471},
+  {n:"Stadium", l:["CC"], a:1.30284, o:103.87535},
+  {n:"Mountbatten", l:["CC"], a:1.306084, o:103.883153},
+  {n:"Dakota", l:["CC"], a:1.30841, o:103.888814},
+  {n:"MacPherson", l:["CC","DT"], a:1.326712, o:103.889985},
+  {n:"Tai Seng", l:["CC"], a:1.335876, o:103.887716},
+  {n:"Bartley", l:["CC"], a:1.342269, o:103.880238},
+  {n:"Lorong Chuan", l:["CC"], a:1.351509, o:103.864719},
+  {n:"Marymount", l:["CC"], a:1.349014, o:103.839095},
+  {n:"Caldecott", l:["CC","TE"], a:1.337684, o:103.839501},
+  {n:"Botanic Gardens", l:["CC","DT"], a:1.322312, o:103.814927},
+  {n:"Farrer Road", l:["CC"], a:1.31267, o:103.854708},
+  {n:"Holland Village", l:["CC"], a:1.311133, o:103.796138},
+  {n:"one-north", l:["CC"], a:1.299811, o:103.787595},
+  {n:"Kent Ridge", l:["CC"], a:1.29346, o:103.78463},
+  {n:"Haw Par Villa", l:["CC"], a:1.283106, o:103.78198},
+  {n:"Pasir Panjang", l:["CC"], a:1.276068, o:103.791904},
+  {n:"Labrador Park", l:["CC"], a:1.27233, o:103.80294},
+  {n:"Telok Blangah", l:["CC"], a:1.270728, o:103.809879},
+  {n:"Bayfront", l:["CC","DT"], a:1.281339, o:103.858955},
+  {n:"Bukit Panjang", l:["DT","BP"], a:1.378316, o:103.762459},
+  {n:"Cashew", l:["DT"], a:1.369948, o:103.764547},
+  {n:"Hillview", l:["DT"], a:1.362202, o:103.767066},
+  {n:"Hume", l:["DT"], a:1.3546, o:103.7692},
+  {n:"Beauty World", l:["DT"], a:1.341702, o:103.77601},
+  {n:"King Albert Park", l:["DT"], a:1.335688, o:103.783193},
+  {n:"Sixth Avenue", l:["DT"], a:1.331567, o:103.796976},
+  {n:"Tan Kah Kee", l:["DT"], a:1.325607, o:103.807918},
+  {n:"Stevens", l:["DT","TE"], a:1.319928, o:103.826153},
+  {n:"Rochor", l:["DT"], a:1.303556, o:103.852554},
+  {n:"Downtown", l:["DT"], a:1.279455, o:103.852806},
+  {n:"Telok Ayer", l:["DT"], a:1.282251, o:103.848651},
+  {n:"Fort Canning", l:["DT"], a:1.292436, o:103.844212},
+  {n:"Bencoolen", l:["DT"], a:1.298524, o:103.8499},
+  {n:"Jalan Besar", l:["DT"], a:1.305652, o:103.855319},
+  {n:"Bendemeer", l:["DT"], a:1.313572, o:103.863259},
+  {n:"Geylang Bahru", l:["DT"], a:1.321483, o:103.871621},
+  {n:"Mattar", l:["DT"], a:1.326846, o:103.883304},
+  {n:"Ubi", l:["DT"], a:1.32995, o:103.898989},
+  {n:"Kaki Bukit", l:["DT"], a:1.33492, o:103.908965},
+  {n:"Bedok North", l:["DT"], a:1.335244, o:103.918046},
+  {n:"Bedok Reservoir", l:["DT"], a:1.33661, o:103.93223},
+  {n:"Tampines West", l:["DT"], a:1.345562, o:103.938206},
+  {n:"Tampines East", l:["DT"], a:1.355582, o:103.955201},
+  {n:"Upper Changi", l:["DT"], a:1.34174, o:103.96147},
+  {n:"Woodlands North", l:["TE"], a:1.44787, o:103.785417},
+  {n:"Woodlands South", l:["TE"], a:1.427351, o:103.793148},
+  {n:"Springleaf", l:["TE"], a:1.397398, o:103.81849},
+  {n:"Lentor", l:["TE"], a:1.384416, o:103.83681},
+  {n:"Mayflower", l:["TE"], a:1.372646, o:103.837026},
+  {n:"Bright Hill", l:["TE"], a:1.363173, o:103.833179},
+  {n:"Upper Thomson", l:["TE"], a:1.353974, o:103.833817},
+  {n:"Napier", l:["TE"], a:1.30597, o:103.81965},
+  {n:"Orchard Boulevard", l:["TE"], a:1.302516, o:103.823846},
+  {n:"Great World", l:["TE"], a:1.29487, o:103.83335},
+  {n:"Havelock", l:["TE"], a:1.2902, o:103.83322},
+  {n:"Maxwell", l:["TE"], a:1.280689, o:103.844087},
+  {n:"Shenton Way", l:["TE"], a:1.27773, o:103.85068},
+  {n:"Gardens by the Bay", l:["TE"], a:1.27973, o:103.86797},
+  {n:"Tanjong Rhu", l:["TE"], a:1.29713, o:103.87353},
+  {n:"Katong Park", l:["TE"], a:1.297425, o:103.886951},
+  {n:"Tanjong Katong", l:["TE"], a:1.299263, o:103.897341},
+  {n:"Marine Parade", l:["TE"], a:1.30347, o:103.90615},
+  {n:"Marine Terrace", l:["TE"], a:1.306632, o:103.914799},
+  {n:"Siglap", l:["TE"], a:1.309843, o:103.92964},
+  {n:"Bayshore", l:["TE"], a:1.31285, o:103.94126},
+  {n:"South View", l:["BP"], a:1.380298, o:103.745238},
+  {n:"Keat Hong", l:["BP"], a:1.378616, o:103.749042},
+  {n:"Teck Whye", l:["BP"], a:1.376696, o:103.753675},
+  {n:"Phoenix", l:["BP"], a:1.378613, o:103.757988},
+  {n:"Petir", l:["BP"], a:1.377739, o:103.766628},
+  {n:"Pending", l:["BP"], a:1.376219, o:103.771325},
+  {n:"Bangkit", l:["BP"], a:1.380047, o:103.772624},
+  {n:"Fajar", l:["BP"], a:1.384615, o:103.770826},
+  {n:"Segar", l:["BP"], a:1.387777, o:103.769662},
+  {n:"Jelapang", l:["BP"], a:1.386684, o:103.764567},
+  {n:"Senja", l:["BP"], a:1.382694, o:103.762325},
+  {n:"Compassvale", l:["SL"], a:1.394387, o:103.900522},
+  {n:"Rumbia", l:["SL"], a:1.391468, o:103.906057},
+  {n:"Bakau", l:["SL"], a:1.388008, o:103.905487},
+  {n:"Kangkar", l:["SL"], a:1.383734, o:103.901884},
+  {n:"Ranggung", l:["SL"], a:1.384327, o:103.897182},
+  {n:"Cheng Lim", l:["SL"], a:1.396324, o:103.893805},
+  {n:"Farmway", l:["SL"], a:1.397126, o:103.889235},
+  {n:"Kupang", l:["SL"], a:1.398199, o:103.881422},
+  {n:"Thanggam", l:["SL"], a:1.397416, o:103.875647},
+  {n:"Fernvale", l:["SL"], a:1.391947, o:103.876262},
+  {n:"Layar", l:["SL"], a:1.39206, o:103.880045},
+  {n:"Tongkang", l:["SL"], a:1.389331, o:103.885865},
+  {n:"Renjong", l:["SL"], a:1.386729, o:103.890522},
+  {n:"Cove", l:["PL"], a:1.399368, o:103.905911},
+  {n:"Meridian", l:["PL"], a:1.396842, o:103.908952},
+  {n:"Coral Edge", l:["PL"], a:1.393818, o:103.91269},
+  {n:"Riviera", l:["PL"], a:1.394572, o:103.916311},
+  {n:"Kadaloor", l:["PL"], a:1.399503, o:103.916528},
+  {n:"Oasis", l:["PL"], a:1.402222, o:103.912724},
+  {n:"Damai", l:["PL"], a:1.405188, o:103.908864},
+  {n:"Sam Kee", l:["PL"], a:1.40973, o:103.904885},
+  {n:"Teck Lee", l:["PL"], a:1.41277, o:103.906573},
+  {n:"Sumang", l:["PL"], a:1.408482, o:103.898539},
+  {n:"Soo Teck", l:["PL"], a:1.405339, o:103.897284},
+  {n:"Punggol Point", l:["PL"], a:1.416848, o:103.906699},
+  {n:"Samudera", l:["PL"], a:1.415968, o:103.902208},
+  {n:"Nibong", l:["PL"], a:1.411889, o:103.900396},
+];
+
+// ── Route sequences (station order per line) ──────────────────────
+const ROUTES = {
+  NS: { color:'#e2231a', w:4, segments:[
+    ["Jurong East","Bukit Batok","Bukit Gombak","Choa Chu Kang","Yew Tee","Kranji","Marsiling","Woodlands","Admiralty","Sembawang","Canberra","Yishun","Khatib","Yio Chu Kang","Ang Mo Kio","Bishan","Braddell","Toa Payoh","Novena","Newton","Orchard","Somerset","Dhoby Ghaut","City Hall","Raffles Place","Marina Bay","Marina South Pier"]
+  ]},
+  EW: { color:'#009645', w:4, segments:[
+    ["Tuas Link","Tuas West Road","Tuas Crescent","Gul Circle","Joo Koon","Pioneer","Boon Lay","Lakeside","Chinese Garden","Jurong East","Clementi","Dover","Buona Vista","Commonwealth","Queenstown","Redhill","Tiong Bahru","Outram Park","Tanjong Pagar","Raffles Place","City Hall","Bugis","Lavender","Kallang","Aljunied","Paya Lebar","Eunos","Kembangan","Bedok","Tanah Merah","Simei","Tampines","Pasir Ris"],
+    ["Tanah Merah","Expo","Changi Airport"]
+  ]},
+  NE: { color:'#9900aa', w:4, segments:[
+    ["HarbourFront","Outram Park","Chinatown","Clarke Quay","Dhoby Ghaut","Little India","Farrer Park","Boon Keng","Potong Pasir","Woodleigh","Serangoon","Kovan","Hougang","Buangkok","Sengkang","Punggol","Punggol Coast"]
+  ]},
+  CC: { color:'#fa9e0d', w:4, segments:[
+    ["Dhoby Ghaut","Bras Basah","Esplanade","Promenade","Nicoll Highway","Stadium","Mountbatten","Dakota","Paya Lebar","MacPherson","Tai Seng","Bartley","Serangoon","Lorong Chuan","Bishan","Marymount","Caldecott","Botanic Gardens","Farrer Road","Holland Village","Buona Vista","one-north","Kent Ridge","Haw Par Villa","Pasir Panjang","Labrador Park","Telok Blangah","HarbourFront"],
+    ["Promenade","Bayfront","Marina Bay"]
+  ]},
+  DT: { color:'#005ec4', w:4, segments:[
+    ["Bukit Panjang","Cashew","Hillview","Hume","Beauty World","King Albert Park","Sixth Avenue","Tan Kah Kee","Botanic Gardens","Stevens","Newton","Little India","Rochor","Bugis","Promenade","Bayfront","Downtown","Telok Ayer","Chinatown","Fort Canning","Bencoolen","Jalan Besar","Bendemeer","Geylang Bahru","Mattar","MacPherson","Ubi","Kaki Bukit","Bedok North","Bedok Reservoir","Tampines West","Tampines","Tampines East","Upper Changi","Expo"]
+  ]},
+  TE: { color:'#9d5b25', w:4, segments:[
+    ["Woodlands North","Woodlands","Woodlands South","Springleaf","Lentor","Mayflower","Bright Hill","Upper Thomson","Caldecott","Stevens","Napier","Orchard Boulevard","Orchard","Great World","Havelock","Outram Park","Maxwell","Shenton Way","Marina Bay","Gardens by the Bay","Tanjong Rhu","Katong Park","Tanjong Katong","Marine Parade","Marine Terrace","Siglap","Bayshore"]
+  ]},
+  BP: { color:'#748477', w:2.5, segments:[
+    ["Choa Chu Kang","South View","Keat Hong","Teck Whye","Phoenix","Bukit Panjang","Petir","Pending","Bangkit","Fajar","Segar","Jelapang","Senja","Choa Chu Kang"]
+  ]},
+  SL: { color:'#748477', w:2.5, segments:[
+    ["Sengkang","Compassvale","Rumbia","Bakau","Kangkar","Ranggung","Sengkang"],
+    ["Sengkang","Cheng Lim","Farmway","Kupang","Thanggam","Fernvale","Layar","Tongkang","Renjong","Sengkang"]
+  ]},
+  PL: { color:'#748477', w:2.5, segments:[
+    ["Punggol","Cove","Meridian","Coral Edge","Riviera","Kadaloor","Oasis","Damai","Punggol"],
+    ["Punggol","Sam Kee","Teck Lee","Sumang","Soo Teck","Punggol Point","Samudera","Nibong","Punggol"]
+  ]}
+};
+
+// ── Map init ──────────────────────────────────────────────────────
+const map = L.map('map', {
+  center: [1.3521, 103.8198], zoom: 12,
+  zoomControl: false,
+  maxBounds: [[1.1, 103.55], [1.55, 104.15]], minZoom: 10
+});
+
+const tileDark = L.tileLayer(
+  'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+  { attribution:'&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/">CARTO</a>', subdomains:'abcd', maxZoom:19 }
+);
+const tileLight = L.tileLayer(
+  'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+  { attribution:'&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/">CARTO</a>', subdomains:'abcd', maxZoom:19 }
+);
+tileDark.addTo(map);
+L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+// ── Layer groups (drawn in this order, bottom to top) ─────────────
+const lnGroup = L.layerGroup().addTo(map);  // train lines
+const ciGroup = L.layerGroup().addTo(map);  // 500 m circles
+const mkGroup = L.layerGroup().addTo(map);  // station dots
+const lbGroup = L.layerGroup();             // station labels (off by default)
+
+// ── Coordinate lookup map ─────────────────────────────────────────
+const SMAP = {};
+S.forEach(s => { SMAP[s.n] = [s.a, s.o]; });
+
+// ── Draw train lines ──────────────────────────────────────────────
+Object.entries(ROUTES).forEach(([, route]) => {
+  route.segments.forEach(seg => {
+    const coords = seg.map(n => SMAP[n]).filter(Boolean);
+    if (coords.length < 2) return;
+    L.polyline(coords, {
+      color: route.color,
+      weight: route.w,
+      opacity: 0.88,
+      lineJoin: 'round',
+      lineCap: 'round'
+    }).addTo(lnGroup);
+  });
+});
+
+// ── Build station markers, circles and labels ─────────────────────
+S.forEach(s => {
+  const col = LC[s.l[0]] || '#aaa';
+  const isInterchange = s.l.length > 1;
+
+  // 500 m radius circle
+  L.circle([s.a, s.o], {
+    radius: 500, color: col, fillColor: col,
+    fillOpacity: 0.09, weight: 1, opacity: 0.35
+  }).addTo(ciGroup);
+
+  // Station dot
+  const mk = L.circleMarker([s.a, s.o], {
+    radius: isInterchange ? 7 : 5,
+    fillColor: col,
+    color: '#fff',
+    weight: isInterchange ? 2.5 : 1.5,
+    fillOpacity: 1
+  });
+  const badges = s.l.map(c => `<span class="pb" style="background:${LC[c]}">${c}</span>`).join('');
+  mk.bindPopup(`<div class="pname">${s.n}</div><div class="pbadges">${badges}</div>`, { maxWidth:200 });
+  mkGroup.addLayer(mk);
+
+  // Station name label
+  lbGroup.addLayer(L.marker([s.a, s.o], {
+    icon: L.divIcon({ className:'stn-lbl', html: s.n, iconSize:[0,0], iconAnchor:[0,0] }),
+    interactive: false,
+    zIndexOffset: -500
+  }));
+});
+
+// ── Toggles ───────────────────────────────────────────────────────
+const layerMap = { markers:mkGroup, lines:lnGroup, circles:ciGroup, labels:lbGroup };
+
+function tog(key, el) {
+  el.classList.toggle('on');
+  const lg = layerMap[key];
+  if (map.hasLayer(lg)) map.removeLayer(lg);
+  else map.addLayer(lg);
+}
+
+let isLight = false;
+function toggleTheme(el) {
+  isLight = !isLight;
+  el.classList.toggle('on');
+  document.body.classList.toggle('light');
+  if (isLight) { map.removeLayer(tileDark); tileLight.addTo(map); }
+  else          { map.removeLayer(tileLight); tileDark.addTo(map); }
+}
+
+document.getElementById('count').textContent = S.length + ' stations';
+
+</script>
+</body>
+</html>
