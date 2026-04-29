@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Singapore MRT/LRT Coverage</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; overflow: hidden; font-family: 'DM Sans', system-ui, sans-serif; }
+    #map { width: 100%; height: 100vh; }
+
+    .panel {
+      position: absolute;
+      z-index: 1000;
+      background: rgba(10, 10, 18, 0.88);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 14px;
+      color: #d8d8e8;
+    }
+
+    #header { top: 16px; left: 16px; padding: 13px 17px; }
+    #header h1 { font-size: 15px; font-weight: 700; color: #fff; letter-spacing: -0.01em; }
+    #header p  { font-size: 11px; color: #44445a; margin-top: 2px; }
+
+    #controls { top: 16px; right: 16px; padding: 15px 17px; width: 238px; }
+
+    .section-label {
+      font-size: 10px; font-weight: 700; letter-spacing: 0.1em;
+      text-transform: uppercase; color: #44445a; margin-bottom: 9px;
+    }
+
+    .toggle-row {
+      display: flex; align-items: center;
+      justify-content: space-between; margin-bottom: 7px;
+    }
+    .toggle-row span { font-size: 13px; color: #b8b8cc; }
+
+    .sw {
+      width: 38px; height: 22px; border-radius: 11px;
+      background: #252535; cursor: pointer; position: relative;
+      transition: background 0.22s; border: 1px solid rgba(255,255,255,0.05);
+    }
+    .sw.on { background: #16a34a; }
+    .sw::after {
+      content: ''; position: absolute;
+      width: 16px; height: 16px; border-radius: 50%;
+      background: #fff; top: 2px; left: 2px;
+      transition: left 0.22s; box-shadow: 0 1px 3px rgba(0,0,0,0.35);
+    }
+    .sw.on::after { left: 18px; }
+
+    hr.div { border: none; border-top: 1px solid rgba(255,255,255,0.06); margin: 11px 0; }
+
+    .leg { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; font-size: 12px; color: #a0a0b8; }
+    .pip { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+
+    #count { font-size: 11px; color: #33334a; text-align: right; margin-top: 9px; }
+
+    .leaflet-popup-content-wrapper {
+      background: rgba(10,10,18,0.94) !important;
+      border: 1px solid rgba(255,255,255,0.09) !important;
+      border-radius: 10px !important;
+      box-shadow: 0 8px 28px rgba(0,0,0,0.45) !important;
+      color: #d8d8e8 !important;
+    }
+    .leaflet-popup-tip-container { display: none; }
+    .leaflet-popup-close-button { color: #555566 !important; top: 6px !important; right: 8px !important; }
+    .pname { font-size: 14px; font-weight: 700; color: #fff; margin-bottom: 6px; }
+    .pbadges { display: flex; flex-wrap: wrap; gap: 4px; }
+    .pb {
+      font-size: 11px; font-weight: 600;
+      padding: 2px 7px; border-radius: 4px; color: #fff;
+    }
+  </style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<div class="panel" id="header">
+  <h1>SG Transit Coverage</h1>
+  <p>MRT · LRT · 500 m radius</p>
+</div>
+
+<div class="panel" id="controls">
+  <div class="section-label">Display</div>
+  <div class="toggle-row">
+    <span>Station markers</span>
+    <div class="sw on" id="tmk" onclick="tog('markers',this)"></div>
+  </div>
+  <div class="toggle-row">
+    <span>500 m radius circles</span>
+    <div class="sw on" id="tci" onclick="tog('circles',this)"></div>
+  </div>
+
+  <hr class="div">
+  <div class="section-label">Lines</div>
+  <div class="leg"><div class="pip" style="background:#e2231a"></div>North–South (NS)</div>
+  <div class="leg"><div class="pip" style="background:#009645"></div>East–West (EW)</div>
+  <div class="leg"><div class="pip" style="background:#9900aa"></div>North East (NE)</div>
+  <div class="leg"><div class="pip" style="background:#fa9e0d"></div>Circle (CC)</div>
+  <div class="leg"><div class="pip" style="background:#005ec4"></div>Downtown (DT)</div>
+  <div class="leg"><div class="pip" style="background:#9d5b25"></div>Thomson–East Coast (TE)</div>
+  <div class="leg"><div class="pip" style="background:#748477"></div>LRT (BP / SK / PG)</div>
+  <div id="count"></div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+
+const LC = {
+  NS:'#e2231a', EW:'#009645', NE:'#9900aa',
+  CC:'#fa9e0d', DT:'#005ec4', TE:'#9d5b25',
+  BP:'#748477', SL:'#748477', PL:'#748477'
+};
+
+const LN = {
+  NS:'North–South', EW:'East–West', NE:'North East',
+  CC:'Circle', DT:'Downtown', TE:'Thomson–East Coast',
+  BP:'Bukit Panjang LRT', SL:'Sengkang LRT', PL:'Punggol LRT'
+};
+
+const S = [
+  // ── North–South Line ──────────────────────────────────────────
+  {n:"Jurong East",       l:["NS","EW"],     a:1.3330, o:103.7425},
+  {n:"Bukit Batok",       l:["NS"],          a:1.3491, o:103.7496},
+  {n:"Bukit Gombak",      l:["NS"],          a:1.3585, o:103.7519},
+  {n:"Choa Chu Kang",     l:["NS","BP"],     a:1.3854, o:103.7440},
+  {n:"Yew Tee",           l:["NS"],          a:1.3973, o:103.7477},
+  {n:"Kranji",            l:["NS"],          a:1.4250, o:103.7619},
+  {n:"Marsiling",         l:["NS"],          a:1.4327, o:103.7742},
+  {n:"Woodlands",         l:["NS","TE"],     a:1.4370, o:103.7866},
+  {n:"Admiralty",         l:["NS"],          a:1.4408, o:103.8010},
+  {n:"Sembawang",         l:["NS"],          a:1.4491, o:103.8199},
+  {n:"Canberra",          l:["NS"],          a:1.4432, o:103.8296},
+  {n:"Yishun",            l:["NS"],          a:1.4294, o:103.8354},
+  {n:"Khatib",            l:["NS"],          a:1.4175, o:103.8330},
+  {n:"Yio Chu Kang",      l:["NS"],          a:1.3817, o:103.8449},
+  {n:"Ang Mo Kio",        l:["NS"],          a:1.3700, o:103.8495},
+  {n:"Bishan",            l:["NS","CC"],     a:1.3508, o:103.8481},
+  {n:"Braddell",          l:["NS"],          a:1.3405, o:103.8470},
+  {n:"Toa Payoh",         l:["NS"],          a:1.3327, o:103.8471},
+  {n:"Novena",            l:["NS"],          a:1.3203, o:103.8436},
+  {n:"Newton",            l:["NS","DT"],     a:1.3126, o:103.8384},
+  {n:"Orchard",           l:["NS","TE"],     a:1.3048, o:103.8318},
+  {n:"Somerset",          l:["NS"],          a:1.3006, o:103.8389},
+  {n:"Dhoby Ghaut",       l:["NS","NE","CC"],a:1.2989, o:103.8456},
+  {n:"City Hall",         l:["NS","EW"],     a:1.2931, o:103.8520},
+  {n:"Raffles Place",     l:["NS","EW"],     a:1.2830, o:103.8513},
+  {n:"Marina Bay",        l:["NS","CC","TE"],a:1.2762, o:103.8563},
+  {n:"Marina South Pier", l:["NS"],          a:1.2710, o:103.8634},
+
+  // ── East–West Line (unique stations only) ─────────────────────
+  {n:"Pasir Ris",         l:["EW"],          a:1.3731, o:103.9493},
+  {n:"Tampines",          l:["EW","DT"],     a:1.3539, o:103.9452},
+  {n:"Simei",             l:["EW"],          a:1.3431, o:103.9531},
+  {n:"Tanah Merah",       l:["EW"],          a:1.3274, o:103.9463},
+  {n:"Bedok",             l:["EW"],          a:1.3241, o:103.9300},
+  {n:"Kembangan",         l:["EW"],          a:1.3205, o:103.9135},
+  {n:"Eunos",             l:["EW"],          a:1.3197, o:103.9027},
+  {n:"Paya Lebar",        l:["EW","CC"],     a:1.3178, o:103.8921},
+  {n:"Aljunied",          l:["EW"],          a:1.3162, o:103.8830},
+  {n:"Kallang",           l:["EW"],          a:1.3123, o:103.8712},
+  {n:"Lavender",          l:["EW"],          a:1.3073, o:103.8629},
+  {n:"Bugis",             l:["EW","DT"],     a:1.3009, o:103.8559},
+  {n:"Tanjong Pagar",     l:["EW"],          a:1.2765, o:103.8453},
+  {n:"Outram Park",       l:["EW","NE","TE"],a:1.2801, o:103.8394},
+  {n:"Tiong Bahru",       l:["EW"],          a:1.2861, o:103.8273},
+  {n:"Redhill",           l:["EW"],          a:1.2896, o:103.8165},
+  {n:"Queenstown",        l:["EW"],          a:1.2946, o:103.8058},
+  {n:"Commonwealth",      l:["EW"],          a:1.3020, o:103.7981},
+  {n:"Buona Vista",       l:["EW","CC"],     a:1.3073, o:103.7899},
+  {n:"Dover",             l:["EW"],          a:1.3112, o:103.7788},
+  {n:"Clementi",          l:["EW"],          a:1.3150, o:103.7651},
+  {n:"Chinese Garden",    l:["EW"],          a:1.3424, o:103.7318},
+  {n:"Lakeside",          l:["EW"],          a:1.3444, o:103.7218},
+  {n:"Boon Lay",          l:["EW"],          a:1.3387, o:103.7059},
+  {n:"Pioneer",           l:["EW"],          a:1.3376, o:103.6972},
+  {n:"Joo Koon",          l:["EW"],          a:1.3278, o:103.6782},
+  {n:"Gul Circle",        l:["EW"],          a:1.3192, o:103.6607},
+  {n:"Tuas Crescent",     l:["EW"],          a:1.3235, o:103.6492},
+  {n:"Tuas West Road",    l:["EW"],          a:1.3309, o:103.6394},
+  {n:"Tuas Link",         l:["EW"],          a:1.3398, o:103.6366},
+  {n:"Expo",              l:["EW","DT"],     a:1.3354, o:103.9614},
+  {n:"Changi Airport",    l:["EW"],          a:1.3573, o:103.9883},
+
+  // ── North East Line ───────────────────────────────────────────
+  {n:"HarbourFront",      l:["NE","CC"],     a:1.2654, o:103.8220},
+  {n:"Chinatown",         l:["NE","DT"],     a:1.2849, o:103.8441},
+  {n:"Clarke Quay",       l:["NE"],          a:1.2882, o:103.8465},
+  {n:"Little India",      l:["NE","DT"],     a:1.3067, o:103.8494},
+  {n:"Farrer Park",       l:["NE"],          a:1.3124, o:103.8537},
+  {n:"Boon Keng",         l:["NE"],          a:1.3195, o:103.8614},
+  {n:"Potong Pasir",      l:["NE"],          a:1.3310, o:103.8692},
+  {n:"Woodleigh",         l:["NE"],          a:1.3391, o:103.8713},
+  {n:"Serangoon",         l:["NE","CC"],     a:1.3499, o:103.8731},
+  {n:"Kovan",             l:["NE"],          a:1.3601, o:103.8828},
+  {n:"Hougang",           l:["NE"],          a:1.3714, o:103.8924},
+  {n:"Buangkok",          l:["NE"],          a:1.3832, o:103.8930},
+  {n:"Sengkang",          l:["NE","SL"],     a:1.3915, o:103.8954},
+  {n:"Punggol",           l:["NE","PL"],     a:1.4053, o:103.9022},
+
+  // ── Circle Line ───────────────────────────────────────────────
+  {n:"Bras Basah",        l:["CC"],          a:1.2966, o:103.8511},
+  {n:"Esplanade",         l:["CC"],          a:1.2935, o:103.8559},
+  {n:"Promenade",         l:["CC","DT"],     a:1.2936, o:103.8608},
+  {n:"Nicoll Highway",    l:["CC"],          a:1.2997, o:103.8635},
+  {n:"Stadium",           l:["CC"],          a:1.3058, o:103.8748},
+  {n:"Mountbatten",       l:["CC"],          a:1.3082, o:103.8806},
+  {n:"Dakota",            l:["CC"],          a:1.3143, o:103.8879},
+  {n:"MacPherson",        l:["CC","DT"],     a:1.3265, o:103.8879},
+  {n:"Tai Seng",          l:["CC"],          a:1.3354, o:103.8876},
+  {n:"Bartley",           l:["CC"],          a:1.3425, o:103.8798},
+  {n:"Lorong Chuan",      l:["CC"],          a:1.3625, o:103.8651},
+  {n:"Marymount",         l:["CC"],          a:1.3498, o:103.8393},
+  {n:"Caldecott",         l:["CC","TE"],     a:1.3371, o:103.8393},
+  {n:"Botanic Gardens",   l:["CC","DT"],     a:1.3225, o:103.8153},
+  {n:"Farrer Road",       l:["CC"],          a:1.3171, o:103.8073},
+  {n:"Holland Village",   l:["CC"],          a:1.3125, o:103.7960},
+  {n:"one-north",         l:["CC"],          a:1.2993, o:103.7876},
+  {n:"Kent Ridge",        l:["CC"],          a:1.2930, o:103.7853},
+  {n:"Haw Par Villa",     l:["CC"],          a:1.2826, o:103.7820},
+  {n:"Pasir Panjang",     l:["CC"],          a:1.2760, o:103.7921},
+  {n:"Labrador Park",     l:["CC"],          a:1.2723, o:103.8025},
+  {n:"Telok Blangah",     l:["CC"],          a:1.2705, o:103.8099},
+  {n:"Bayfront",          l:["CC","DT"],     a:1.2829, o:103.8597},
+
+  // ── Downtown Line ─────────────────────────────────────────────
+  {n:"Bukit Panjang",     l:["DT","BP"],     a:1.3789, o:103.7761},
+  {n:"Cashew",            l:["DT"],          a:1.3698, o:103.7740},
+  {n:"Hillview",          l:["DT"],          a:1.3624, o:103.7676},
+  {n:"Beauty World",      l:["DT"],          a:1.3414, o:103.7762},
+  {n:"King Albert Park",  l:["DT"],          a:1.3348, o:103.7832},
+  {n:"Sixth Avenue",      l:["DT"],          a:1.3302, o:103.7953},
+  {n:"Tan Kah Kee",       l:["DT"],          a:1.3257, o:103.8072},
+  {n:"Stevens",           l:["DT","TE"],     a:1.3193, o:103.8267},
+  {n:"Rochor",            l:["DT"],          a:1.3049, o:103.8517},
+  {n:"Downtown",          l:["DT"],          a:1.2795, o:103.8529},
+  {n:"Telok Ayer",        l:["DT"],          a:1.2808, o:103.8481},
+  {n:"Fort Canning",      l:["DT"],          a:1.2933, o:103.8446},
+  {n:"Bencoolen",         l:["DT"],          a:1.2983, o:103.8489},
+  {n:"Jalan Besar",       l:["DT"],          a:1.3045, o:103.8551},
+  {n:"Bendemeer",         l:["DT"],          a:1.3143, o:103.8651},
+  {n:"Geylang Bahru",     l:["DT"],          a:1.3227, o:103.8739},
+  {n:"Mattar",            l:["DT"],          a:1.3259, o:103.8843},
+  {n:"Ubi",               l:["DT"],          a:1.3296, o:103.8993},
+  {n:"Kaki Bukit",        l:["DT"],          a:1.3344, o:103.9083},
+  {n:"Bedok North",       l:["DT"],          a:1.3350, o:103.9197},
+  {n:"Bedok Reservoir",   l:["DT"],          a:1.3370, o:103.9315},
+  {n:"Tampines West",     l:["DT"],          a:1.3459, o:103.9388},
+  {n:"Tampines East",     l:["DT"],          a:1.3562, o:103.9527},
+  {n:"Upper Changi",      l:["DT"],          a:1.3414, o:103.9610},
+
+  // ── Thomson–East Coast Line ───────────────────────────────────
+  {n:"Woodlands North",   l:["TE"],          a:1.4483, o:103.7874},
+  {n:"Woodlands South",   l:["TE"],          a:1.4273, o:103.7944},
+  {n:"Springleaf",        l:["TE"],          a:1.4082, o:103.8137},
+  {n:"Lentor",            l:["TE"],          a:1.3975, o:103.8335},
+  {n:"Mayflower",         l:["TE"],          a:1.3841, o:103.8380},
+  {n:"Bright Hill",       l:["TE"],          a:1.3713, o:103.8348},
+  {n:"Upper Thomson",     l:["TE"],          a:1.3560, o:103.8296},
+  {n:"Napier",            l:["TE"],          a:1.3057, o:103.8185},
+  {n:"Orchard Boulevard", l:["TE"],          a:1.3034, o:103.8225},
+  {n:"Great World",       l:["TE"],          a:1.2946, o:103.8240},
+  {n:"Havelock",          l:["TE"],          a:1.2885, o:103.8355},
+  {n:"Maxwell",           l:["TE"],          a:1.2798, o:103.8449},
+  {n:"Shenton Way",       l:["TE"],          a:1.2769, o:103.8497},
+  {n:"Gardens by the Bay",l:["TE"],          a:1.2812, o:103.8638},
+  {n:"Tanjong Rhu",       l:["TE"],          a:1.2970, o:103.8727},
+  {n:"Katong Park",       l:["TE"],          a:1.3023, o:103.8833},
+  {n:"Tanjong Katong",    l:["TE"],          a:1.3061, o:103.8930},
+  {n:"Marine Parade",     l:["TE"],          a:1.3022, o:103.9059},
+  {n:"Marine Terrace",    l:["TE"],          a:1.3075, o:103.9134},
+  {n:"Siglap",            l:["TE"],          a:1.3135, o:103.9247},
+  {n:"Bayshore",          l:["TE"],          a:1.3170, o:103.9366},
+  {n:"Bedok South",       l:["TE"],          a:1.3214, o:103.9464},
+  {n:"Sungei Bedok",      l:["TE"],          a:1.3284, o:103.9533},
+
+  // ── Bukit Panjang LRT ─────────────────────────────────────────
+  {n:"South View",        l:["BP"],          a:1.3771, o:103.7711},
+  {n:"Keat Hong",         l:["BP"],          a:1.3823, o:103.7500},
+  {n:"Teck Whye",         l:["BP"],          a:1.3832, o:103.7475},
+  {n:"Phoenix",           l:["BP"],          a:1.3845, o:103.7545},
+  {n:"Petir",             l:["BP"],          a:1.3768, o:103.7641},
+  {n:"Pending",           l:["BP"],          a:1.3747, o:103.7720},
+  {n:"Bangkit",           l:["BP"],          a:1.3813, o:103.7688},
+  {n:"Fajar",             l:["BP"],          a:1.3858, o:103.7679},
+  {n:"Segar",             l:["BP"],          a:1.3879, o:103.7621},
+  {n:"Jelapang",          l:["BP"],          a:1.3907, o:103.7581},
+  {n:"Senja",             l:["BP"],          a:1.3924, o:103.7523},
+
+  // ── Sengkang LRT ──────────────────────────────────────────────
+  {n:"Compassvale",       l:["SL"],          a:1.3963, o:103.9013},
+  {n:"Rumbia",            l:["SL"],          a:1.3958, o:103.9060},
+  {n:"Bakau",             l:["SL"],          a:1.3936, o:103.9073},
+  {n:"Kangkar",           l:["SL"],          a:1.3910, o:103.9059},
+  {n:"Ranggung",          l:["SL"],          a:1.3896, o:103.9011},
+  {n:"Cheng Lim",         l:["SL"],          a:1.3950, o:103.8902},
+  {n:"Farmway",           l:["SL"],          a:1.3986, o:103.8863},
+  {n:"Kupang",            l:["SL"],          a:1.4016, o:103.8861},
+  {n:"Thanggam",          l:["SL"],          a:1.3998, o:103.8918},
+  {n:"Fernvale",          l:["SL"],          a:1.3952, o:103.8780},
+  {n:"Layar",             l:["SL"],          a:1.3929, o:103.8791},
+  {n:"Tongkang",          l:["SL"],          a:1.3919, o:103.8846},
+  {n:"Renjong",           l:["SL"],          a:1.3929, o:103.8912},
+
+  // ── Punggol LRT ───────────────────────────────────────────────
+  {n:"Cove",              l:["PL"],          a:1.4079, o:103.9062},
+  {n:"Meridian",          l:["PL"],          a:1.4119, o:103.9100},
+  {n:"Coral Edge",        l:["PL"],          a:1.4144, o:103.9149},
+  {n:"Riviera",           l:["PL"],          a:1.4141, o:103.9202},
+  {n:"Kadaloor",          l:["PL"],          a:1.4110, o:103.9238},
+  {n:"Oasis",             l:["PL"],          a:1.4082, o:103.9214},
+  {n:"Damai",             l:["PL"],          a:1.4067, o:103.9162},
+  {n:"Sam Kee",           l:["PL"],          a:1.4085, o:103.8998},
+  {n:"Teck Lee",          l:["PL"],          a:1.4109, o:103.8980},
+  {n:"Sumang",            l:["PL"],          a:1.4144, o:103.8986},
+  {n:"Soo Teck",          l:["PL"],          a:1.4160, o:103.9024},
+  {n:"Punggol Point",     l:["PL"],          a:1.4177, o:103.9063},
+  {n:"Samudera",          l:["PL"],          a:1.4171, o:103.9107},
+  {n:"Nibong",            l:["PL"],          a:1.4158, o:103.9138},
+];
+
+// ── Map setup ────────────────────────────────────────────────────
+
+const map = L.map('map', {
+  center: [1.3521, 103.8198],
+  zoom: 12,
+  zoomControl: false,
+  maxBounds: [[1.1, 103.55], [1.55, 104.15]],
+  minZoom: 10
+});
+
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  attribution: '&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/">CARTO</a>',
+  subdomains: 'abcd', maxZoom: 19
+}).addTo(map);
+
+L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+// ── Layer groups ─────────────────────────────────────────────────
+
+const mkGroup = L.layerGroup().addTo(map);
+const ciGroup = L.layerGroup().addTo(map);
+
+S.forEach(s => {
+  const col = LC[s.l[0]] || '#aaa';
+  const isInterchange = s.l.length > 1;
+
+  // 500 m circle
+  L.circle([s.a, s.o], {
+    radius: 500,
+    color: col,
+    fillColor: col,
+    fillOpacity: 0.09,
+    weight: 1,
+    opacity: 0.35
+  }).addTo(ciGroup);
+
+  // Station dot
+  const mk = L.circleMarker([s.a, s.o], {
+    radius: isInterchange ? 6 : 4,
+    fillColor: col,
+    color: isInterchange ? '#ffffff' : 'rgba(255,255,255,0.7)',
+    weight: isInterchange ? 2 : 1.5,
+    fillOpacity: 1
+  });
+
+  const badges = s.l.map(code =>
+    `<span class="pb" style="background:${LC[code]}">${code}</span>`
+  ).join('');
+
+  mk.bindPopup(
+    `<div class="pname">${s.n}</div><div class="pbadges">${badges}</div>`,
+    { maxWidth: 200, closeButton: true }
+  );
+
+  mkGroup.addLayer(mk);
+});
+
+// ── Toggles ───────────────────────────────────────────────────────
+
+const layers = { markers: mkGroup, circles: ciGroup };
+
+function tog(key, el) {
+  el.classList.toggle('on');
+  const lg = layers[key];
+  if (map.hasLayer(lg)) map.removeLayer(lg);
+  else map.addLayer(lg);
+}
+
+document.getElementById('count').textContent = S.length + ' stations';
+
+</script>
+</body>
+</html>
