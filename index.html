@@ -123,7 +123,7 @@
   </div>
   <div class="toggle-row">
     <span>Train lines</span>
-    <div class="sw on" onclick="tog('lines',this)"></div>
+    <div class="sw" onclick="tog('lines',this)"></div>
   </div>
   <div class="toggle-row">
     <span>Station names</span>
@@ -400,7 +400,7 @@ tileDark.addTo(map);
 L.control.zoom({ position: 'bottomright' }).addTo(map);
 
 // ── Layer groups (drawn in this order, bottom to top) ─────────────
-const lnGroup = L.layerGroup().addTo(map);  // train lines
+const lnGroup = L.layerGroup();  // train lines
 const ciGroup = L.layerGroup().addTo(map);  // 500 m circles
 const mkGroup = L.layerGroup().addTo(map);  // station dots
 const lbGroup = L.layerGroup();             // station labels (off by default)
