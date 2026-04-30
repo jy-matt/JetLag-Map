@@ -3,47 +3,61 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Singapore MRT/LRT Coverage</title>
+  <title>JetLag Map SG</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body { height: 100%; overflow: hidden; font-family: 'DM Sans', system-ui, sans-serif; }
+    html, body { height: 100%; overflow: hidden; font-family: system-ui, -apple-system, sans-serif; }
     #map { width: 100%; height: 100vh; }
 
-    /* ── Panels ──────────────────────────────────────────────────── */
+    /* ── Panels ──────────────────────────────────────────────── */
     .panel {
       position: absolute; z-index: 1000;
       background: rgba(10,10,18,0.88);
       backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
       border: 1px solid rgba(255,255,255,0.07);
       border-radius: 14px; color: #d8d8e8;
-      transition: background 0.25s, border-color 0.25s, color 0.25s;
+      transition: background 0.25s, border-color 0.25s, opacity 0.2s;
     }
     body.light .panel {
       background: rgba(252,252,255,0.93);
       border-color: rgba(0,0,0,0.08);
     }
+    body.ui-hidden .panel { opacity: 0; pointer-events: none; }
 
-    #header { top: 16px; left: 16px; padding: 13px 17px; }
-    #header h1 { font-size: 15px; font-weight: 700; color: #fff; letter-spacing: -0.01em; transition: color 0.25s; }
-    #header p  { font-size: 11px; color: #44445a; margin-top: 2px; transition: color 0.25s; }
+    #header { top: 16px; left: 16px; padding: 10px 14px; }
+    #header h1 { font-size: 14px; font-weight: 700; color: #fff; letter-spacing: -0.01em; }
     body.light #header h1 { color: #1a1a2e; }
-    body.light #header p  { color: #9090a8; }
 
-    #controls { top: 16px; right: 16px; padding: 15px 17px; width: 238px; }
+    #controls { top: 16px; right: 16px; padding: 15px 17px; width: 228px; }
+    #tools    { bottom: 20px; right: 16px; padding: 14px 16px; width: 228px; }
 
+    /* ── Eye button ──────────────────────────────────────────── */
+    #eye-btn {
+      position: absolute; z-index: 1100;
+      bottom: 20px; left: 16px;
+      width: 36px; height: 36px;
+      background: rgba(10,10,18,0.88);
+      backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 10px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      color: #5050a0; transition: color 0.18s, background 0.18s;
+    }
+    #eye-btn:hover { color: #c0c0e8; background: rgba(30,30,48,0.92); }
+    body.light #eye-btn { background: rgba(252,252,255,0.93); border-color: rgba(0,0,0,0.08); color: #8080c0; }
+    body.light #eye-btn:hover { color: #1a1a2e; }
+    body.ui-hidden #eye-btn { color: #8080b8; }
+
+    /* ── Common controls ─────────────────────────────────────── */
     .section-label {
       font-size: 10px; font-weight: 700; letter-spacing: 0.1em;
       text-transform: uppercase; color: #44445a; margin-bottom: 9px;
-      transition: color 0.25s;
     }
     body.light .section-label { color: #9090a8; }
 
-    .toggle-row {
-      display: flex; align-items: center;
-      justify-content: space-between; margin-bottom: 7px;
-    }
-    .toggle-row span { font-size: 13px; color: #b8b8cc; transition: color 0.25s; }
+    .toggle-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 7px; }
+    .toggle-row span { font-size: 13px; color: #b8b8cc; }
     body.light .toggle-row span { color: #2a2a3e; }
 
     .sw {
@@ -61,17 +75,17 @@
     }
     .sw.on::after { left: 18px; }
 
-    hr.div { border: none; border-top: 1px solid rgba(255,255,255,0.06); margin: 11px 0; transition: border-color 0.25s; }
+    hr.div { border: none; border-top: 1px solid rgba(255,255,255,0.06); margin: 11px 0; }
     body.light hr.div { border-top-color: rgba(0,0,0,0.07); }
 
-    .leg { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; font-size: 12px; color: #a0a0b8; transition: color 0.25s; }
+    .leg { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; font-size: 12px; color: #a0a0b8; }
     body.light .leg { color: #3a3a50; }
     .pip { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
 
-    #count { font-size: 11px; color: #33334a; text-align: right; margin-top: 9px; transition: color 0.25s; }
+    #count { font-size: 11px; color: #33334a; text-align: right; margin-top: 9px; }
     body.light #count { color: #b0b0c0; }
 
-    /* ── Popups ──────────────────────────────────────────────────── */
+    /* ── Popups ──────────────────────────────────────────────── */
     .leaflet-popup-content-wrapper {
       background: rgba(10,10,18,0.94) !important;
       border: 1px solid rgba(255,255,255,0.09) !important;
@@ -92,10 +106,29 @@
     .pbadges { display: flex; flex-wrap: wrap; gap: 4px; }
     .pb { font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 4px; color: #fff; }
 
-    /* ── Station name labels ─────────────────────────────────────── */
+    /* ── Hover tooltips ──────────────────────────────────────── */
+    .leaflet-tooltip.stn-tt {
+      background: rgba(10,10,18,0.92) !important;
+      border: 1px solid rgba(255,255,255,0.1) !important;
+      border-radius: 8px !important;
+      color: #fff !important;
+      font-size: 12px !important;
+      font-weight: 600 !important;
+      padding: 4px 10px !important;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.5) !important;
+      white-space: nowrap !important;
+      pointer-events: none !important;
+    }
+    .leaflet-tooltip.stn-tt::before { display: none !important; }
+    body.light .leaflet-tooltip.stn-tt {
+      background: rgba(255,255,255,0.97) !important;
+      color: #1a1a2e !important;
+      border-color: rgba(0,0,0,0.1) !important;
+    }
+
+    /* ── Station name labels ─────────────────────────────────── */
     .stn-lbl {
-      font-size: 11px; font-weight: 600;
-      color: #ffffff; white-space: nowrap;
+      font-size: 11px; font-weight: 600; color: #fff; white-space: nowrap;
       pointer-events: none; background: transparent; border: none;
       text-shadow: 0 0 3px rgba(0,0,0,1), 0 0 8px rgba(0,0,0,0.9);
       padding-left: 10px; margin-top: -5px;
@@ -104,43 +137,146 @@
       color: #1a1a2e;
       text-shadow: 0 0 3px rgba(255,255,255,1), 0 0 8px rgba(255,255,255,0.9);
     }
+
+    /* ── Tools panel ─────────────────────────────────────────── */
+    .tool-tabs { display: flex; gap: 4px; margin-bottom: 12px; }
+    .ttab {
+      flex: 1; padding: 6px 0;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 8px; color: #5050a0;
+      font-size: 12px; font-weight: 600; cursor: pointer;
+      transition: all 0.18s; display: flex; align-items: center; justify-content: center; gap: 5px;
+    }
+    .ttab:hover { background: rgba(255,255,255,0.09); color: #a0a0cc; }
+    .ttab.active { background: rgba(255,255,255,0.11); color: #e8e8ff; border-color: rgba(255,255,255,0.12); }
+    body.light .ttab { background: rgba(0,0,0,0.04); border-color: rgba(0,0,0,0.07); color: #8080b0; }
+    body.light .ttab.active { background: rgba(0,0,0,0.08); color: #1a1a2e; border-color: rgba(0,0,0,0.12); }
+
+    .tool-hint { font-size: 12px; color: #5050a0; line-height: 1.45; margin-bottom: 2px; }
+    body.light .tool-hint { color: #8080b8; }
+
+    .tool-stat {
+      font-size: 22px; font-weight: 700; color: #fff; letter-spacing: -0.02em;
+      margin: 6px 0 2px;
+    }
+    body.light .tool-stat { color: #1a1a2e; }
+
+    .tool-sub { font-size: 11px; color: #44445a; margin-bottom: 10px; }
+    body.light .tool-sub { color: #9090a8; }
+
+    .tool-btns { display: flex; gap: 6px; margin-top: 10px; }
+    .tbtn {
+      flex: 1; padding: 7px 0; border-radius: 8px;
+      font-size: 12px; font-weight: 600; cursor: pointer;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.08); color: #9090cc;
+      transition: all 0.16s; display: flex; align-items: center; justify-content: center; gap: 4px;
+    }
+    .tbtn:hover:not(:disabled) { background: rgba(255,255,255,0.11); color: #e0e0ff; }
+    .tbtn:disabled { opacity: 0.28; cursor: default; }
+    .tbtn.danger { color: #e06060; border-color: rgba(224,96,96,0.18); background: rgba(224,96,96,0.06); }
+    .tbtn.danger:hover:not(:disabled) { background: rgba(224,96,96,0.14); }
+    body.light .tbtn { background: rgba(0,0,0,0.04); border-color: rgba(0,0,0,0.08); color: #6060a0; }
+    body.light .tbtn:hover:not(:disabled) { background: rgba(0,0,0,0.08); color: #1a1a2e; }
+    body.light .tbtn.danger { color: #c04040; border-color: rgba(192,64,64,0.2); background: rgba(192,64,64,0.05); }
+
+    /* ── Mobile bar ──────────────────────────────────────────── */
+    #mobile-bar {
+      display: none;
+      position: fixed; bottom: 0; left: 0; right: 0; z-index: 1100;
+      background: rgba(10,10,18,0.96);
+      backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+      border-top: 1px solid rgba(255,255,255,0.07);
+      padding: 6px 8px;
+      padding-bottom: max(6px, env(safe-area-inset-bottom));
+      justify-content: space-around; align-items: stretch;
+    }
+    body.light #mobile-bar { background: rgba(252,252,255,0.96); border-top-color: rgba(0,0,0,0.08); }
+
+    .mbar-btn {
+      flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+      padding: 6px 4px; border-radius: 10px; background: transparent; border: none;
+      cursor: pointer; color: #404070; transition: all 0.15s;
+      font-size: 10px; font-weight: 600; letter-spacing: 0.01em;
+    }
+    .mbar-btn svg { width: 20px; height: 20px; }
+    .mbar-btn.active { color: #c0c0ff; background: rgba(255,255,255,0.07); }
+    body.light .mbar-btn { color: #9090c0; }
+    body.light .mbar-btn.active { color: #1a1a2e; background: rgba(0,0,0,0.06); }
+    body.ui-hidden .mbar-btn:not(#mbar-eye) { opacity: 0.4; pointer-events: none; }
+
+    /* ── Responsive ──────────────────────────────────────────── */
+    @media (max-width: 640px) {
+      #mobile-bar { display: flex; }
+      #eye-btn { display: none; }
+
+      #header { top: 12px; left: 12px; padding: 8px 12px; }
+      #header h1 { font-size: 13px; }
+
+      .panel#controls, .panel#tools {
+        position: fixed !important;
+        top: auto !important; bottom: 0 !important;
+        left: 0 !important; right: 0 !important;
+        border-radius: 18px 18px 0 0; width: auto !important;
+        max-height: 70vh; overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        padding: 18px 18px;
+        padding-bottom: max(18px, env(safe-area-inset-bottom));
+        transform: translateY(100%);
+        transition: transform 0.28s cubic-bezier(0.32,0,0.2,1), opacity 0.2s;
+        opacity: 0;
+      }
+      .panel#controls.mob-open, .panel#tools.mob-open {
+        transform: translateY(0); opacity: 1;
+      }
+      /* Override ui-hidden for panel opacity on mobile (handled by transform) */
+      body.ui-hidden .panel#controls,
+      body.ui-hidden .panel#tools,
+      body.ui-hidden .panel#header { opacity: 0 !important; pointer-events: none !important; }
+
+      /* Adjust tools panel bottom to sit above mobile bar */
+      .panel#controls, .panel#tools {
+        bottom: 56px !important;
+      }
+
+      #tools { bottom: auto !important; right: auto !important; }
+    }
+
+    @media (min-width: 641px) {
+      #controls { max-height: calc(100vh - 48px); overflow-y: auto; }
+      #tools { max-height: calc(55vh - 20px); overflow-y: auto; }
+    }
   </style>
 </head>
 <body>
 
 <div id="map"></div>
 
-<div class="panel" id="header">
-  <h1>SG Transit Coverage</h1>
-  <p>MRT · LRT · 500 m radius</p>
-</div>
+<!-- Eye toggle (desktop) -->
+<button id="eye-btn" onclick="toggleUI()" title="Toggle UI">
+  <svg id="eye-open" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+  </svg>
+  <svg id="eye-closed" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none">
+    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+    <line x1="1" y1="1" x2="23" y2="23"/>
+  </svg>
+</button>
 
+<!-- Header -->
+<div class="panel" id="header"><h1>JetLag Map SG</h1></div>
+
+<!-- Controls panel -->
 <div class="panel" id="controls">
   <div class="section-label">Display</div>
-  <div class="toggle-row">
-    <span>Station markers</span>
-    <div class="sw on" onclick="tog('markers',this)"></div>
-  </div>
-  <div class="toggle-row">
-    <span>Train lines</span>
-    <div class="sw" onclick="tog('lines',this)"></div>
-  </div>
-  <div class="toggle-row">
-    <span>Station names</span>
-    <div class="sw" onclick="tog('labels',this)"></div>
-  </div>
-  <div class="toggle-row">
-    <span>500 m radius</span>
-    <div class="sw on" onclick="tog('circles',this)"></div>
-  </div>
-
+  <div class="toggle-row"><span>Station markers</span><div class="sw on" onclick="tog('markers',this)"></div></div>
+  <div class="toggle-row"><span>Train lines</span><div class="sw" onclick="tog('lines',this)"></div></div>
+  <div class="toggle-row"><span>Station names</span><div class="sw" onclick="tog('labels',this)"></div></div>
+  <div class="toggle-row"><span>500 m radius</span><div class="sw on" onclick="tog('circles',this)"></div></div>
   <hr class="div">
   <div class="section-label">Theme</div>
-  <div class="toggle-row">
-    <span>Light mode</span>
-    <div class="sw" onclick="toggleTheme(this)"></div>
-  </div>
-
+  <div class="toggle-row"><span>Light mode</span><div class="sw" onclick="toggleTheme(this)"></div></div>
   <hr class="div">
   <div class="section-label">Lines</div>
   <div class="leg"><div class="pip" style="background:#e2231a"></div>North–South (NS)</div>
@@ -151,6 +287,72 @@
   <div class="leg"><div class="pip" style="background:#9d5b25"></div>Thomson–East Coast (TE)</div>
   <div class="leg"><div class="pip" style="background:#748477"></div>LRT (BP / SK / PG)</div>
   <div id="count"></div>
+</div>
+
+<!-- Tools panel -->
+<div class="panel" id="tools">
+  <div class="tool-tabs">
+    <button class="ttab active" id="tab-dist" onclick="switchTool('dist')">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="2" y1="12" x2="22" y2="12"/><polyline points="8 6 2 12 8 18"/><polyline points="16 6 22 12 16 18"/></svg>
+      Distance
+    </button>
+    <button class="ttab" id="tab-rad" onclick="switchTool('rad')">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="1" fill="currentColor"/></svg>
+      Radius
+    </button>
+  </div>
+
+  <!-- Distance tool body -->
+  <div id="tool-dist">
+    <div class="tool-hint" id="dist-hint">Click the map to place a start point</div>
+    <div class="tool-stat" id="dist-stat" style="display:none"></div>
+    <div class="tool-sub"  id="dist-sub"  style="display:none"></div>
+    <div class="tool-btns" id="dist-btns" style="display:none">
+      <button class="tbtn danger" onclick="clearDist()">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        Clear
+      </button>
+    </div>
+  </div>
+
+  <!-- Radius tool body -->
+  <div id="tool-rad" style="display:none">
+    <div class="tool-hint" id="rad-hint">Click the map to place a center point</div>
+    <div class="tool-stat" id="rad-stat" style="display:none"></div>
+    <div class="tool-sub"  id="rad-sub"  style="display:none"></div>
+    <div class="tool-btns" id="rad-btns" style="display:none">
+      <button class="tbtn danger" onclick="clearRad()">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        Clear
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Mobile bottom bar -->
+<div id="mobile-bar">
+  <button class="mbar-btn" id="mbar-controls" onclick="mobilePanelToggle('controls')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>
+    </svg>
+    Display
+  </button>
+  <button class="mbar-btn" id="mbar-tools" onclick="mobilePanelToggle('tools')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="1" y="8" width="22" height="8" rx="1.5"/><line x1="6" y1="8" x2="6" y2="12"/><line x1="10" y1="8" x2="10" y2="16"/><line x1="14" y1="8" x2="14" y2="12"/><line x1="18" y1="8" x2="18" y2="16"/>
+    </svg>
+    Measure
+  </button>
+  <button class="mbar-btn" id="mbar-eye" onclick="toggleUI()">
+    <svg id="meye-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+    </svg>
+    <svg id="meye-closed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:none">
+      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+      <line x1="1" y1="1" x2="23" y2="23"/>
+    </svg>
+    Map
+  </button>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -346,7 +548,6 @@ const S = [
   {n:"Nibong", l:["PL"], a:1.411889, o:103.900396},
 ];
 
-// ── Route sequences (station order per line) ──────────────────────
 const ROUTES = {
   NS: { color:'#e2231a', w:4, segments:[
     ["Jurong East","Bukit Batok","Bukit Gombak","Choa Chu Kang","Yew Tee","Kranji","Marsiling","Woodlands","Admiralty","Sembawang","Canberra","Yishun","Khatib","Yio Chu Kang","Ang Mo Kio","Bishan","Braddell","Toa Payoh","Novena","Newton","Orchard","Somerset","Dhoby Ghaut","City Hall","Raffles Place","Marina Bay","Marina South Pier"]
@@ -385,86 +586,95 @@ const ROUTES = {
 const map = L.map('map', {
   center: [1.3521, 103.8198], zoom: 12,
   zoomControl: false,
-  maxBounds: [[1.1, 103.55], [1.55, 104.15]], minZoom: 10
+  maxBounds: [[1.1, 103.55],[1.55, 104.15]], minZoom: 10
 });
 
-const tileDark = L.tileLayer(
-  'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-  { attribution:'&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/">CARTO</a>', subdomains:'abcd', maxZoom:19 }
-);
-const tileLight = L.tileLayer(
-  'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-  { attribution:'&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/">CARTO</a>', subdomains:'abcd', maxZoom:19 }
-);
+const tileDark = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  attribution:'&copy; <a href="https://www.openstreetmap.org/">OSM</a> contributors &copy; <a href="https://carto.com/">CARTO</a>',
+  subdomains:'abcd', maxZoom:19
+});
+const tileLight = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+  attribution:'&copy; <a href="https://www.openstreetmap.org/">OSM</a> contributors &copy; <a href="https://carto.com/">CARTO</a>',
+  subdomains:'abcd', maxZoom:19
+});
 tileDark.addTo(map);
 L.control.zoom({ position: 'bottomright' }).addTo(map);
 
-// ── Layer groups (drawn in this order, bottom to top) ─────────────
-const lnGroup = L.layerGroup();  // train lines
-const ciGroup = L.layerGroup().addTo(map);  // 500 m circles
-const mkGroup = L.layerGroup().addTo(map);  // station dots
-const lbGroup = L.layerGroup();             // station labels (off by default)
+// ── Layer groups ──────────────────────────────────────────────────
+const lnGroup = L.layerGroup();
+const ciGroup = L.layerGroup().addTo(map);
+const mkGroup = L.layerGroup().addTo(map);
+const lbGroup = L.layerGroup();
 
-// ── Coordinate lookup map ─────────────────────────────────────────
+// ── Coord lookup ──────────────────────────────────────────────────
 const SMAP = {};
 S.forEach(s => { SMAP[s.n] = [s.a, s.o]; });
 
-// ── Draw train lines ──────────────────────────────────────────────
+// ── Train lines ───────────────────────────────────────────────────
 Object.entries(ROUTES).forEach(([, route]) => {
   route.segments.forEach(seg => {
     const coords = seg.map(n => SMAP[n]).filter(Boolean);
     if (coords.length < 2) return;
-    L.polyline(coords, {
-      color: route.color,
-      weight: route.w,
-      opacity: 0.88,
-      lineJoin: 'round',
-      lineCap: 'round'
-    }).addTo(lnGroup);
+    L.polyline(coords, { color: route.color, weight: route.w, opacity: 0.88, lineJoin:'round', lineCap:'round' }).addTo(lnGroup);
   });
 });
 
-// ── Build station markers, circles and labels ─────────────────────
+// ── Station markers, tooltips, labels ────────────────────────────
 S.forEach(s => {
   const col = LC[s.l[0]] || '#aaa';
   const isInterchange = s.l.length > 1;
 
-  // 500 m radius circle
+  // 500 m circle
   L.circle([s.a, s.o], {
     radius: 500, color: col, fillColor: col,
     fillOpacity: 0.09, weight: 1, opacity: 0.35
   }).addTo(ciGroup);
 
-  // Station dot
+  // Dot marker
   const mk = L.circleMarker([s.a, s.o], {
     radius: isInterchange ? 7 : 5,
-    fillColor: col,
-    color: '#fff',
+    fillColor: col, color: '#fff',
     weight: isInterchange ? 2.5 : 1.5,
     fillOpacity: 1
   });
+
+  // Hover tooltip (desktop only in practice — touch has no mouseover)
+  mk.bindTooltip(s.n, {
+    className: 'stn-tt',
+    direction: 'top',
+    offset: [0, -10],
+    sticky: false
+  });
+
+  // Click popup — only opens when tools panel is not in measuring mode
   const badges = s.l.map(c => `<span class="pb" style="background:${LC[c]}">${c}</span>`).join('');
-  mk.bindPopup(`<div class="pname">${s.n}</div><div class="pbadges">${badges}</div>`, { maxWidth:200 });
+  const popupContent = `<div class="pname">${s.n}</div><div class="pbadges">${badges}</div>`;
+  const popup = L.popup({ maxWidth: 200, closeButton: true }).setContent(popupContent);
+
+  mk.on('click', () => {
+    if (toolsActive()) return; // suppress popup while measuring
+    popup.setLatLng([s.a, s.o]).openOn(map);
+  });
+
   mkGroup.addLayer(mk);
 
-  // Station name label
+  // Name label (toggled layer)
   lbGroup.addLayer(L.marker([s.a, s.o], {
     icon: L.divIcon({ className:'stn-lbl', html: s.n, iconSize:[0,0], iconAnchor:[0,0] }),
-    interactive: false,
-    zIndexOffset: -500
+    interactive: false, zIndexOffset: -500
   }));
 });
 
-// ── Toggles ───────────────────────────────────────────────────────
-const layerMap = { markers:mkGroup, lines:lnGroup, circles:ciGroup, labels:lbGroup };
+// ── Display toggles ───────────────────────────────────────────────
+const layerMap = { markers: mkGroup, lines: lnGroup, circles: ciGroup, labels: lbGroup };
 
 function tog(key, el) {
   el.classList.toggle('on');
   const lg = layerMap[key];
-  if (map.hasLayer(lg)) map.removeLayer(lg);
-  else map.addLayer(lg);
+  if (map.hasLayer(lg)) map.removeLayer(lg); else map.addLayer(lg);
 }
 
+// ── Theme ─────────────────────────────────────────────────────────
 let isLight = false;
 function toggleTheme(el) {
   isLight = !isLight;
@@ -472,6 +682,255 @@ function toggleTheme(el) {
   document.body.classList.toggle('light');
   if (isLight) { map.removeLayer(tileDark); tileLight.addTo(map); }
   else          { map.removeLayer(tileLight); tileDark.addTo(map); }
+}
+
+// ── UI toggle ─────────────────────────────────────────────────────
+let uiHidden = false;
+function toggleUI() {
+  uiHidden = !uiHidden;
+  document.body.classList.toggle('ui-hidden', uiHidden);
+  document.getElementById('eye-open').style.display   = uiHidden ? 'none' : '';
+  document.getElementById('eye-closed').style.display = uiHidden ? '' : 'none';
+  document.getElementById('meye-open').style.display   = uiHidden ? 'none' : '';
+  document.getElementById('meye-closed').style.display = uiHidden ? '' : 'none';
+  // Close any open mobile panel when hiding UI
+  if (uiHidden && mobOpen) {
+    document.getElementById(mobOpen).classList.remove('mob-open');
+    document.getElementById('mbar-' + mobOpen).classList.remove('active');
+    mobOpen = null;
+  }
+}
+
+// ── Mobile panel management ───────────────────────────────────────
+let mobOpen = null;
+
+function mobilePanelToggle(id) {
+  if (uiHidden) { toggleUI(); } // restore UI first
+  const panel = document.getElementById(id);
+  const btn   = document.getElementById('mbar-' + id);
+  if (mobOpen === id) {
+    panel.classList.remove('mob-open');
+    btn.classList.remove('active');
+    mobOpen = null;
+  } else {
+    if (mobOpen) {
+      document.getElementById(mobOpen).classList.remove('mob-open');
+      document.getElementById('mbar-' + mobOpen).classList.remove('active');
+    }
+    panel.classList.add('mob-open');
+    btn.classList.add('active');
+    mobOpen = id;
+  }
+}
+
+// ── Tool helpers ──────────────────────────────────────────────────
+// Returns true when the tools panel is accessible and measuring is meaningful
+function toolsActive() {
+  if (uiHidden) return false;
+  const isMobile = window.innerWidth <= 640;
+  if (isMobile) return mobOpen === 'tools';
+  return true; // desktop: tools panel always visible
+}
+
+function fmt(m) {
+  return m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(2)} km`;
+}
+
+function setCursor(type) {
+  map.getContainer().style.cursor = type;
+}
+
+// ── Distance tool ─────────────────────────────────────────────────
+let distPhase = 0;       // 0=idle, 1=origin placed, 2=locked
+let distOrigin = null;
+let distOriginDot = null;
+let distPreviewLine = null;
+let distLockedLine = null;
+let distEndDot = null;
+
+map.on('click', e => {
+  if (!toolsActive()) return;
+  if (activeTool === 'dist') handleDistClick(e.latlng);
+  else if (activeTool === 'rad') handleRadClick(e.latlng);
+});
+
+map.on('mousemove', e => {
+  if (activeTool === 'dist' && distPhase === 1) updateDistPreview(e.latlng);
+  if (activeTool === 'rad'  && radPhase  === 1) updateRadPreview(e.latlng);
+});
+
+function handleDistClick(latlng) {
+  if (distPhase === 0) {
+    distOrigin = latlng;
+    distPhase = 1;
+    distOriginDot = L.circleMarker(latlng, {
+      radius: 5, fillColor: '#fff', color: 'rgba(0,0,0,0.5)',
+      weight: 1, fillOpacity: 1, interactive: false
+    }).addTo(map);
+    setCursor('crosshair');
+    refreshDistUI(null);
+
+  } else if (distPhase === 1) {
+    const d = distOrigin.distanceTo(latlng);
+    distPhase = 2;
+    if (distPreviewLine) { map.removeLayer(distPreviewLine); distPreviewLine = null; }
+    distLockedLine = L.polyline([distOrigin, latlng], {
+      color: '#fff', weight: 2.5, dashArray: '6 5',
+      opacity: 0.85, interactive: false
+    }).addTo(map);
+    distEndDot = L.circleMarker(latlng, {
+      radius: 5, fillColor: '#fff', color: 'rgba(0,0,0,0.5)',
+      weight: 1, fillOpacity: 1, interactive: false
+    }).addTo(map);
+    setCursor('');
+    refreshDistUI(d);
+  }
+  // phase 2: ignore further clicks
+}
+
+function updateDistPreview(latlng) {
+  const d = distOrigin.distanceTo(latlng);
+  if (distPreviewLine) {
+    distPreviewLine.setLatLngs([distOrigin, latlng]);
+  } else {
+    distPreviewLine = L.polyline([distOrigin, latlng], {
+      color: '#fff', weight: 2.5, dashArray: '6 5',
+      opacity: 0.6, interactive: false
+    }).addTo(map);
+  }
+  refreshDistUI(d);
+}
+
+function refreshDistUI(d) {
+  const hint = document.getElementById('dist-hint');
+  const stat = document.getElementById('dist-stat');
+  const sub  = document.getElementById('dist-sub');
+  const btns = document.getElementById('dist-btns');
+
+  if (distPhase === 0) {
+    hint.textContent = 'Click the map to place a start point';
+    hint.style.display = ''; stat.style.display = 'none'; sub.style.display = 'none'; btns.style.display = 'none';
+    return;
+  }
+  if (distPhase === 1 && d === null) {
+    hint.textContent = 'Move to preview · click to set end point';
+    hint.style.display = ''; stat.style.display = 'none'; sub.style.display = 'none';
+    btns.style.display = 'flex';
+    return;
+  }
+
+  hint.style.display = distPhase === 1 ? '' : 'none';
+  if (distPhase === 1) hint.textContent = 'Click to lock';
+
+  stat.style.display = ''; stat.textContent = fmt(d);
+  sub.style.display  = ''; sub.textContent  = `${(d / 1000).toFixed(3)} km straight-line`;
+  btns.style.display = 'flex';
+}
+
+function clearDist() {
+  distPhase = 0; distOrigin = null;
+  if (distOriginDot)   { map.removeLayer(distOriginDot);   distOriginDot = null; }
+  if (distPreviewLine) { map.removeLayer(distPreviewLine); distPreviewLine = null; }
+  if (distLockedLine)  { map.removeLayer(distLockedLine);  distLockedLine = null; }
+  if (distEndDot)      { map.removeLayer(distEndDot);      distEndDot = null; }
+  setCursor('');
+  refreshDistUI(null);
+}
+
+// ── Radius tool ───────────────────────────────────────────────────
+let radPhase = 0;           // 0=idle, 1=center placed, 2=locked
+let radCenter = null;
+let radCenterDot = null;
+let radPreview = null;
+let radCircle = null;
+
+function handleRadClick(latlng) {
+  if (radPhase === 0) {
+    radCenter = latlng;
+    radPhase = 1;
+    radCenterDot = L.circleMarker(latlng, {
+      radius: 5, fillColor: '#fff', color: 'rgba(0,0,0,0.5)',
+      weight: 1, fillOpacity: 1, interactive: false
+    }).addTo(map);
+    setCursor('crosshair');
+    refreshRadUI(null);
+
+  } else if (radPhase === 1) {
+    const r = radCenter.distanceTo(latlng);
+    radPhase = 2;
+    if (radPreview) { map.removeLayer(radPreview); radPreview = null; }
+    radCircle = L.circle(radCenter, {
+      radius: r, color: '#fff', fillColor: '#fff',
+      fillOpacity: 0.07, weight: 2, dashArray: '6 5', interactive: false
+    }).addTo(map);
+    setCursor('');
+    refreshRadUI(r);
+  }
+  // phase 2: ignore further clicks
+}
+
+function updateRadPreview(latlng) {
+  const r = radCenter.distanceTo(latlng);
+  if (radPreview) {
+    radPreview.setRadius(r);
+  } else {
+    radPreview = L.circle(radCenter, {
+      radius: r, color: '#fff', fillColor: '#fff',
+      fillOpacity: 0.05, weight: 1.5, dashArray: '5 5', interactive: false
+    }).addTo(map);
+  }
+  refreshRadUI(r);
+}
+
+function refreshRadUI(r) {
+  const hint = document.getElementById('rad-hint');
+  const stat = document.getElementById('rad-stat');
+  const sub  = document.getElementById('rad-sub');
+  const btns = document.getElementById('rad-btns');
+
+  if (radPhase === 0) {
+    hint.textContent = 'Click the map to place a center point';
+    hint.style.display = ''; stat.style.display = 'none'; sub.style.display = 'none'; btns.style.display = 'none';
+    return;
+  }
+  if (radPhase === 1 && r === null) {
+    hint.textContent = 'Move to preview · click to lock radius';
+    hint.style.display = ''; stat.style.display = 'none'; sub.style.display = 'none';
+    btns.style.display = 'flex';
+    return;
+  }
+
+  const rStr    = fmt(r);
+  const areaKm2 = (Math.PI * r * r / 1e6).toFixed(2);
+
+  hint.style.display = radPhase === 1 ? '' : 'none';
+  if (radPhase === 1) hint.textContent = 'Click to lock';
+
+  stat.style.display = ''; stat.textContent = rStr;
+  sub.style.display  = ''; sub.textContent  = `Area ≈ ${areaKm2} km²`;
+  btns.style.display = 'flex';
+}
+
+function clearRad() {
+  radPhase = 0; radCenter = null;
+  if (radCenterDot) { map.removeLayer(radCenterDot); radCenterDot = null; }
+  if (radPreview)   { map.removeLayer(radPreview);   radPreview = null; }
+  if (radCircle)    { map.removeLayer(radCircle);     radCircle = null; }
+  setCursor('');
+  refreshRadUI(null);
+}
+
+// ── Tool switching ────────────────────────────────────────────────
+let activeTool = 'dist';
+
+function switchTool(tool) {
+  if (tool === activeTool) return;
+  clearDist(); clearRad();
+  activeTool = tool;
+  document.getElementById('tab-dist').classList.toggle('active', tool === 'dist');
+  document.getElementById('tab-rad').classList.toggle('active', tool === 'rad');
+  document.getElementById('tool-dist').style.display = tool === 'dist' ? '' : 'none';
+  document.getElementById('tool-rad').style.display  = tool === 'rad'  ? '' : 'none';
 }
 
 document.getElementById('count').textContent = S.length + ' stations';
